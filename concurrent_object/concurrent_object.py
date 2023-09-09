@@ -280,10 +280,12 @@ class ConcurrentObject(CTX.Process):
                         self._back_write_pipe.send(CHILD_MESSAGE.INPUT_READY.value)
 
                         # execute
+                        logger.debug(f"{self._name}: start executing method ({method_name})...")
                         if data_len > 0:
                             outputs = method(*args, **kwargs)
                         else:
                             outputs = method()
+                        logger.debug(f"{self._name}: complete executing method ({method_name})...")
 
                         # serialize to bytes and write to buffer
                         if outputs is not None:
@@ -331,6 +333,14 @@ class ConcurrentObject(CTX.Process):
         request execution and wait for result
         """
         logger.debug(f'{self._name}: request execution and wait for result')
+        if self._is_closed:
+            logger.warning(f'{self._name}: has been closed, cannot execute methods anymore')
+            logger.warning(
+                f'{self._name}: this is probably because an error happens in child process, ' +
+                'which triggers close()'
+            )
+            return
+
 
         while True:
             can_push, can_pull = self.status()
@@ -409,6 +419,16 @@ class ConcurrentObject(CTX.Process):
         pull the result of the last push
         return None if nothing to pull
         """
+        if self._is_closed:
+            logger.warning(
+                f'{self._name}: cannot pull() because close() has been called on this object. ' +
+                'Returning None.'
+            )
+            logger.warning(
+                f'{self._name}: this is probably because an error happens in child process, ' +
+                'which triggers close()'
+            )
+            return
 
         if self._can_pull and self._output_len is not None:
             # reconstruct
@@ -431,6 +451,16 @@ class ConcurrentObject(CTX.Process):
     def push(self, method_name: str, *method_args, **method_kwargs):
         """
         """
+        if self._is_closed:
+            logger.warning(
+                f"{self._name}: cannot push() because close() has been called on this object. " +
+                "Returning None"
+            )
+            logger.warning(
+                f'{self._name}: this is probably because an error happens in child process, ' +
+                'which triggers close()'
+            )
+            return
 
         if not self._child_ready:
             logger.debug(f'{self._name}: child is NOT ready')
@@ -463,7 +493,7 @@ class ConcurrentObject(CTX.Process):
             self._write_pipe().send(PARENT_MESSAGE.EXECUTE.value)
 
             # send the method name and size of data to child
-            logger.debug(f'{self._name}: sending method name and input size to child')
+            logger.debug(f'{self._name}: sending method name ({method_name}) and input size to child')
             self._write_pipe().send((method_name, input_len))
 
             self._can_push = False
