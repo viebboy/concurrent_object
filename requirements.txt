@@ -1,3 +1,4 @@
 loguru
 dill
 GitPython
+requests
